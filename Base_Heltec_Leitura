@@ -18,8 +18,8 @@ float Temp_sensorInt01;            // Variavél criada para tratamento dos dados
 float Temp_sensorDec01;            // Variável criada para tratametno dos dados que vem do LoRa, número decimal que foi transformado em inteiro
 float Temp_sensor01 = 125;         //Iniciado com 125 para viabilizar a opçao de Aguarde..., tem que ser menor que 126
 float Temp_sensor02 = 125;         //Iniciado com 125 para viabilizar a opçao de Aguarde..., tem que ser menor que 126
-byte Endereco_sensor01 = 0x1;      //Endereço hexa fixo atribuido no modulo que ficará no Datacenter
-byte Endereco_sensor02 = 0x2;      //Endereço hexa fixo atribuido no modulo que ficará no Datacenter
+byte Endereco_sensor01 = 0x1;      //Endereço hexa fixo atribuido no modulo que ficará no sensor01
+byte Endereco_sensor02 = 0x2;      //Endereço hexa fixo atribuido no modulo que ficará no sensor02
 byte Endereco_recebido = 0;        //Variável criada para armazenar o endereço recebido pelo LoRa
 
 //VARIÁVEIS CRIADAS PARA TRANSMISSÃO DO MQTT
