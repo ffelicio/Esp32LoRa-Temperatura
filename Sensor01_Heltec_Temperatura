@@ -1,0 +1,58 @@
+#include "Arduino.h"
+#include "heltec.h"
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#define ONE_WIRE_BUS 2
+#define BAND    915E6
+byte Endereco_origem = 0x1;
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+float Temp = 0;
+int ValSensor_Int = 0;
+float ValSensor_dec = 0;
+float Ult_Envio = 0;
+
+
+void setup() {
+  Heltec.begin(true /*DisplayEnable Enable*/, true /*Heltec.Heltec.Heltec.LoRa Disable*/, true /*Serial Enable*/, true /*PABOOST Enable*/, BAND /*long BAND*/); //Inicia o modulo LoRa
+  
+}
+
+void loop() {
+  Heltec.display->clear();
+  Heltec.display->setTextAlignment(TEXT_ALIGN_LEFT);
+  sensors.requestTemperatures();
+  Temp = sensors.getTempCByIndex(0);
+  ValSensor_Int = Temp;
+  ValSensor_dec = Temp - ValSensor_Int;
+  ValSensor_dec = ValSensor_dec * 100;
+
+  if (millis() - Ult_Envio > 1000) { //Garantia de envio a cada 1 segundo
+    LoRa.beginPacket();
+    LoRa.setTxPower(14, RF_PACONFIG_PASELECT_PABOOST);
+    delay(100);
+    LoRa.write(Endereco_origem);
+    LoRa.write(int(ValSensor_Int));
+    LoRa.write(int(ValSensor_dec));
+    LoRa.endPacket();
+    delay(100);
+    Ult_Envio = millis();
+  }
+
+  delay(100);
+  Heltec.display->setFont(ArialMT_Plain_16);
+  Heltec.display->drawString(30, 0, "Vivante");
+  Heltec.display->setFont(ArialMT_Plain_10);
+  Heltec.display->drawString(0, 15, "Controle de temperatura");
+  Heltec.display->drawString(15, 30, "Temperatura Atual:");
+  Heltec.display->setFont(ArialMT_Plain_16);
+  if (Temp == -127) {
+    Heltec.display->drawString(25, 45, "Erro Sensor");
+    Heltec.display->display();
+  }
+  else {
+    Heltec.display->drawString(30, 45, String(Temp));
+    Heltec.display->drawString(80, 45, "°C");
+    Heltec.display->display();
+  }
+}
