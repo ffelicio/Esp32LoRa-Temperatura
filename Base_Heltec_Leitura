@@ -1,0 +1,174 @@
+//BIBLIOTECAS UTILIZADAS
+#include "WiFi.h"
+#include <PubSubClient.h>
+#include "Arduino.h"
+#include "heltec.h"
+
+//DADOS WIFI
+const char* ssid = "xxxxxx";
+const char* senha =  "xxxxxxxx";
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+//DEFINIÇÃO DA BANDA DO LORA
+#define BAND    915E6
+
+//VARIAVEIS CRIADAS PARA TRATAMENTO DOS DADOS DO LORA
+float Temp_sensorInt01;            // Variavél criada para tratamento dos dados que vem do LoRa, número inteiro
+float Temp_sensorDec01;            // Variável criada para tratametno dos dados que vem do LoRa, número decimal que foi transformado em inteiro
+float Temp_sensor01 = 125;         //Iniciado com 125 para viabilizar a opçao de Aguarde..., tem que ser menor que 126
+float Temp_sensor02 = 125;         //Iniciado com 125 para viabilizar a opçao de Aguarde..., tem que ser menor que 126
+byte Endereco_sensor01 = 0x1;      //Endereço hexa fixo atribuido no modulo que ficará no Datacenter
+byte Endereco_sensor02 = 0x2;      //Endereço hexa fixo atribuido no modulo que ficará no Datacenter
+byte Endereco_recebido = 0;        //Variável criada para armazenar o endereço recebido pelo LoRa
+
+//VARIÁVEIS CRIADAS PARA TRANSMISSÃO DO MQTT
+float Tempo_mqqt1 = 0;
+float Tempo_mqqt2 = 0;
+int Intervalo_mqtt1 = 21000;
+int Intervalo_mqtt2 = 27000;
+
+const char* mqttServer = "mqtt.eclipseprojects.io";
+const int mqttPort = 1883;
+const char* mqttUser = "xxxxxxxxx";
+const char* mqttPassword = "xxxxxxxxxx";
+
+
+//VARIÁVEIS CRIADAS PARA SABER QUAL FOI O ULTIMO TEMPO QUE FOI RECEBIDO AS VARIAVEIS DOS MODULOS DE TEMPERATURA
+float Tempo_env_sensor01 = 0;
+float Tempo_env_sensor02 = 0;
+
+//INTERVALO MÁXIMO PARA APARECER MSG DE FALHA DE COMUNICAÇÃO
+int Intervalo_sensores = 60000;
+
+void setup() {
+  WiFi.begin(ssid, senha);
+  delay (2000);
+  Heltec.begin(true /*DisplayEnable Enable*/, true /*LoRa Enable*/, true /*Serial Enable*/, true /*LoRa use PABOOST*/, BAND /*LoRa RF working band*/); //Inicia o modulo LoRa
+  LoRa.receive(); // Habilita o modulo para recepção de dados
+  Heltec.display->init();
+  Heltec.display->clear();
+  Heltec.display->display();
+  Heltec.display->setTextAlignment(TEXT_ALIGN_LEFT);
+  Heltec.display->setFont(ArialMT_Plain_16);
+  Heltec.display->drawString(10, 0, "Vivante ONS");
+  Heltec.display->setFont(ArialMT_Plain_16);
+  Heltec.display->drawString(15, 30, "AGUARDE...");
+  Heltec.display->display();
+}
+
+void loop() {
+
+  //Se não estiver conectado tenta novamente
+  if (WiFi.status() != WL_CONNECTED) {
+    WiFi.begin(ssid, senha);
+    delay(100);
+  }
+
+  Heltec.display->clear();
+  Endereco_recebido = 0;
+  delay(100);
+  client.setServer(mqttServer, mqttPort);
+  delay(100);
+  if (!client.connected())
+  {
+    if (client.connect("ESP32Client", mqttUser, mqttPassword ))
+    { }
+    else
+    {
+      delay(1000);
+    }
+  }
+  int packetSize = LoRa.parsePacket();
+  if (packetSize)
+  {
+    Endereco_recebido = LoRa.read();
+    Temp_sensorInt01 = LoRa.read();
+    Temp_sensorDec01 = LoRa.read();
+
+    if (Endereco_recebido == Endereco_sensor01) {
+      Temp_sensorDec01 = Temp_sensorDec01 / 100;
+      Temp_sensor01 = Temp_sensorInt01 + Temp_sensorDec01;
+      Tempo_env_sensor01 = millis();
+    }
+    else {
+      if (Endereco_recebido == Endereco_sensor02) {
+        Temp_sensorDec01 = Temp_sensorDec01 / 100;
+        Temp_sensor02 = Temp_sensorInt01 + Temp_sensorDec01;
+        Tempo_env_sensor02 = millis();
+      }
+    }
+  }
+
+  if (millis() - Tempo_mqqt1 > Intervalo_mqtt1) {
+    if (Temp_sensor01 > 126 || Temp_sensor01 == -127) {
+      client.publish("Sensordata", String("Erro").c_str(), true);
+    }
+    else {
+      client.publish("Sensordata", String(Temp_sensor01).c_str(), true);
+      Tempo_mqqt1 = millis();
+      delay (1000);
+    }
+  }
+
+  if (millis() - Tempo_mqqt2 > Intervalo_mqtt2) {
+    if (Temp_sensor02 > 126 || Temp_sensor02 == -127) {
+      client.publish("Sensorups", String("Erro").c_str(), true);
+    }
+    else {
+      client.publish("Sensorups", String(Temp_sensor02).c_str(), true);
+      Tempo_mqqt2 = millis();
+    }
+  }
+
+  Heltec.display->setTextAlignment(TEXT_ALIGN_LEFT);
+  Heltec.display->setFont(ArialMT_Plain_10);
+  Heltec.display->drawString(0, 0, "<<<Vivante ONS FLN>>>");
+  Heltec.display->setFont(ArialMT_Plain_10);
+
+  //Atualiza parametro do Datacenter
+
+  Heltec.display->drawString(0, 14, "Temperatura Datacenter:");
+  if (Temp_sensor01 == 125) {
+    Heltec.display->drawString(40, 25, "Aguarde...");
+  }
+  if (Temp_sensor01 > 126 || Temp_sensor01 == -127 ) {
+    Heltec.display->drawString(40, 25, "Erro Sensor");
+  }
+  else {
+    if (millis() - Tempo_env_sensor01 > Intervalo_sensores) {
+      Heltec.display->drawString(10, 25, "Falha Comunicação");
+       Temp_sensor01 = 126;
+    }
+    else {
+      if (Temp_sensor01 != 125) {
+        Heltec.display->drawString(40, 25, String(Temp_sensor01));
+        Heltec.display->drawString(70, 25, "°C");
+      }
+    }
+  }
+
+  //Atualiza parametro da UPS
+
+  Heltec.display->drawString(15, 38, "Temperatura UPS:");
+  if (Temp_sensor02 == 125) {
+    Heltec.display->drawString(40, 52, "Aguarde...");
+  }
+  if (Temp_sensor02 > 126 || Temp_sensor02 == -127 ) {
+    Heltec.display->drawString(40, 52, "Erro Sensor");
+  }
+  else {
+    if (millis() - Tempo_env_sensor02 > Intervalo_sensores) {
+      Heltec.display->drawString(10, 50, "Falha Comunicacão");
+       Temp_sensor02 = 126;
+    }
+    else {
+      if (Temp_sensor02 != 125) {
+        Heltec.display->drawString(40, 52, String(Temp_sensor02));
+        Heltec.display->drawString(70, 52, "°C");
+      }
+    }
+  }
+  Heltec.display->display();
+  delay(100);
+}
